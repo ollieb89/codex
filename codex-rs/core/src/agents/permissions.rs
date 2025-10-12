@@ -55,7 +55,7 @@ impl AgentPermissions {
         }
     }
 
-    fn matches_patterns(&self, path: &Path) -> bool {
+    fn matches_patterns(&self, _path: &Path) -> bool {
         // For now, allow all reads if policy allows reading
         // TODO: Implement pattern matching
         true

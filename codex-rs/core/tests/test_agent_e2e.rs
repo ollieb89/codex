@@ -14,7 +14,6 @@ use codex_core::commands::executor::{ConversationContext, ExecutionContext};
 use codex_core::commands::parser::{CommandMetadata, CommandPermissions};
 use codex_core::commands::registry::{Command, CommandCategory};
 use std::any::Any;
-use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::Instant;
 
@@ -91,7 +90,6 @@ struct MockAgentCommand {
 
 impl MockAgentCommand {
     fn new_agent_command() -> Self {
-        use codex_core::commands::parser::CommandPermissions;
         let metadata = CommandMetadata {
             name: "mock-review".to_string(),
             description: "Mock review command".to_string(),
@@ -106,7 +104,6 @@ impl MockAgentCommand {
     }
 
     fn new_normal_command() -> Self {
-        use codex_core::commands::parser::CommandPermissions;
         let metadata = CommandMetadata {
             name: "mock-explain".to_string(),
             description: "Mock explain command".to_string(),
