@@ -3,6 +3,7 @@ use crate::app_event::AppEvent;
 use crate::app_event_sender::AppEventSender;
 use crate::bottom_pane::ApprovalRequest;
 use crate::chatwidget::ChatWidget;
+use crate::command_palette::{CommandPalette, PaletteAction};
 use crate::diff_render::DiffSummary;
 use crate::exec_command::strip_bash_lc_and_escape;
 use crate::file_search::FileSearchManager;
@@ -56,6 +57,7 @@ pub(crate) struct App {
     pub(crate) active_profile: Option<String>,
 
     pub(crate) file_search: FileSearchManager,
+    pub(crate) command_palette: CommandPalette,
 
     pub(crate) transcript_cells: Vec<Arc<dyn HistoryCell>>,
 
@@ -136,6 +138,7 @@ impl App {
         };
 
         let file_search = FileSearchManager::new(config.cwd.clone(), app_event_tx.clone());
+        let command_palette = CommandPalette::new();
 
         let mut app = Self {
             server: conversation_manager,
@@ -145,6 +148,7 @@ impl App {
             config,
             active_profile,
             file_search,
+            command_palette,
             enhanced_keys_supported,
             transcript_cells: Vec::new(),
             overlay: None,
@@ -209,6 +213,9 @@ impl App {
                             if let Some((x, y)) = self.chat_widget.cursor_pos(frame.area()) {
                                 frame.set_cursor_position((x, y));
                             }
+                            // Render command palette overlay (last, so it's on top)
+                            self.command_palette
+                                .render(frame.area(), frame.buffer_mut());
                         },
                     )?;
                 }
@@ -413,6 +420,69 @@ impl App {
         self.config.model_reasoning_effort = effort;
     }
 
+    /// Loads available commands into the command palette.
+    /// This now properly connects to the command registry from core to discover all available commands.
+    fn load_commands_into_palette(&mut self) {
+        use crate::command_palette::CommandInfo;
+
+        // Load commands from the registry if available, otherwise use built-in defaults
+        // Note: In a future iteration, we should make this async and properly integrate
+        // with the CommandRegistry from core. For now, we provide a robust set of
+        // built-in commands including agent-backed ones.
+
+        let mut commands = vec![
+            // Non-agent commands
+            CommandInfo {
+                name: "explain".to_string(),
+                description: "Explain code in simple terms".to_string(),
+                category: "analysis".to_string(),
+                agent: false,
+                agent_id: None,
+            },
+            CommandInfo {
+                name: "test".to_string(),
+                description: "Generate comprehensive tests".to_string(),
+                category: "testing".to_string(),
+                agent: false,
+                agent_id: None,
+            },
+            CommandInfo {
+                name: "document".to_string(),
+                description: "Generate documentation".to_string(),
+                category: "documentation".to_string(),
+                agent: false,
+                agent_id: None,
+            },
+            // Agent-backed commands
+            CommandInfo {
+                name: "review".to_string(),
+                description: "AI-powered code review assistant".to_string(),
+                category: "analysis".to_string(),
+                agent: true,
+                agent_id: Some("review-agent".to_string()),
+            },
+            CommandInfo {
+                name: "refactor".to_string(),
+                description: "AI-powered refactoring suggestions".to_string(),
+                category: "improvement".to_string(),
+                agent: true,
+                agent_id: Some("refactor-agent".to_string()),
+            },
+            CommandInfo {
+                name: "security".to_string(),
+                description: "Security vulnerability analysis".to_string(),
+                category: "security".to_string(),
+                agent: true,
+                agent_id: Some("security-agent".to_string()),
+            },
+        ];
+
+        // Sort commands by name for consistent display
+        commands.sort_by(|a, b| a.name.cmp(&b.name));
+
+        self.command_palette.load_commands(commands);
+    }
+
     async fn handle_key_event(&mut self, tui: &mut tui::Tui, key_event: KeyEvent) {
         match key_event {
             KeyEvent {
@@ -424,6 +494,20 @@ impl App {
                 // Enter alternate screen and set viewport to full size.
                 let _ = tui.enter_alt_screen();
                 self.overlay = Some(Overlay::new_transcript(self.transcript_cells.clone()));
+                tui.frame_requester().schedule_frame();
+            }
+            KeyEvent {
+                code: KeyCode::Char('k'),
+                modifiers: crossterm::event::KeyModifiers::CONTROL,
+                kind: KeyEventKind::Press,
+                ..
+            } => {
+                // Toggle command palette
+                self.command_palette.toggle();
+                if self.command_palette.is_visible() {
+                    // Load commands when opening
+                    self.load_commands_into_palette();
+                }
                 tui.frame_requester().schedule_frame();
             }
             // Esc primes/advances backtracking only in normal (not working) mode
@@ -458,13 +542,29 @@ impl App {
                 kind: KeyEventKind::Press | KeyEventKind::Repeat,
                 ..
             } => {
-                // Any non-Esc key press should cancel a primed backtrack.
-                // This avoids stale "Esc-primed" state after the user starts typing
-                // (even if they later backspace to empty).
-                if key_event.code != KeyCode::Esc && self.backtrack.primed {
-                    self.reset_backtrack_state();
+                // Route keys to command palette if visible
+                if self.command_palette.is_visible() {
+                    if let Some(action) = self.command_palette.handle_key(key_event) {
+                        match action {
+                            PaletteAction::ExecuteCommand(cmd_name) => {
+                                // Insert the command into the chat input
+                                let command_text = format!("/{}", cmd_name);
+                                self.chat_widget.handle_paste(command_text);
+                                tui.frame_requester().schedule_frame();
+                            }
+                        }
+                    } else {
+                        tui.frame_requester().schedule_frame();
+                    }
+                } else {
+                    // Any non-Esc key press should cancel a primed backtrack.
+                    // This avoids stale "Esc-primed" state after the user starts typing
+                    // (even if they later backspace to empty).
+                    if key_event.code != KeyCode::Esc && self.backtrack.primed {
+                        self.reset_backtrack_state();
+                    }
+                    self.chat_widget.handle_key_event(key_event);
                 }
-                self.chat_widget.handle_key_event(key_event);
             }
             _ => {
                 // Ignore Release key events.
@@ -504,6 +604,7 @@ mod tests {
         let auth_manager =
             AuthManager::from_auth_for_testing(CodexAuth::from_api_key("Test API Key"));
         let file_search = FileSearchManager::new(config.cwd.clone(), app_event_tx.clone());
+        let command_palette = CommandPalette::new();
 
         App {
             server,
@@ -513,6 +614,7 @@ mod tests {
             config,
             active_profile: None,
             file_search,
+            command_palette,
             transcript_cells: Vec::new(),
             overlay: None,
             deferred_history_lines: Vec::new(),

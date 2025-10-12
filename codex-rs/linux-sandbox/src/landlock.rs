@@ -44,8 +44,10 @@ pub(crate) fn apply_sandbox_policy_to_current_thread(
         install_filesystem_landlock_rules_on_current_thread(writable_roots)?;
     }
 
-    // TODO(ragona): Add appropriate restrictions if
-    // `sandbox_policy.has_full_disk_read_access()` is `false`.
+    // Note: Read access restrictions are not currently supported by SandboxPolicy.
+    // The has_full_disk_read_access() method always returns true.
+    // When read restrictions are added to SandboxPolicy in the future, this code
+    // should be updated to properly handle them.
 
     Ok(())
 }
