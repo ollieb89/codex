@@ -32,16 +32,22 @@ dunce = { workspace = true }
 env-flags = { workspace = true }
 eventsource-stream = { workspace = true }
 futures = { workspace = true }
+handlebars = { workspace = true }
 indexmap = { workspace = true }
+lazy_static = "1.4"
 libc = { workspace = true }
+regex = "1.10"
 mcp-types = { workspace = true }
+notify = { workspace = true }
 os_info = { workspace = true }
 portable-pty = { workspace = true }
+pulldown-cmark = { workspace = true }
 rand = { workspace = true }
 regex-lite = { workspace = true }
 reqwest = { workspace = true, features = ["json", "stream"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+serde_yaml = { workspace = true }
 sha1 = { workspace = true }
 shlex = { workspace = true }
 similar = { workspace = true }

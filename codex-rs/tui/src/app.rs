@@ -548,7 +548,7 @@ impl App {
                         match action {
                             PaletteAction::ExecuteCommand(cmd_name) => {
                                 // Insert the command into the chat input
-                                let command_text = format!("/{}", cmd_name);
+                                let command_text = format!("/{cmd_name}");
                                 self.chat_widget.handle_paste(command_text);
                                 tui.frame_requester().schedule_frame();
                             }

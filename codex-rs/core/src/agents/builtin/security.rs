@@ -4,13 +4,20 @@ use async_trait::async_trait;
 use lazy_static::lazy_static;
 use regex::Regex;
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 
+use crate::agents::ActivationScore;
+use crate::agents::Agent;
+use crate::agents::AgentId;
+use crate::agents::AgentPermissions;
+use crate::agents::AgentResult;
+use crate::agents::AgentToolkit;
+use crate::agents::CodeReviewFinding;
+use crate::agents::Severity;
+use crate::agents::Task;
+use crate::agents::TaskContext;
 use crate::agents::permissions::FileAccessPolicy;
-use crate::agents::{
-    ActivationScore, Agent, AgentId, AgentPermissions, AgentResult, AgentToolkit,
-    CodeReviewFinding, Severity, Task, TaskContext,
-};
 
 /// Vulnerability pattern definition.
 #[derive(Clone)]
@@ -35,7 +42,7 @@ lazy_static! {
                 name: "SQL Injection".to_string(),
                 pattern: Regex::new(
                     r#"(?i)(SELECT|INSERT|UPDATE|DELETE).*['"].*\+|execute\(|query.*=.*['"].*\+|WHERE.*=.*['"].*\+"#
-                ).expect("SQL injection regex should compile"),
+                ).unwrap_or_else(|e| panic!("SQL injection regex should compile: {e}")),
                 severity: Severity::Error,
                 cve_references: vec!["CWE-89".to_string()],
                 description: "Potential SQL injection vulnerability detected. String concatenation in SQL queries can allow attackers to inject malicious SQL code.".to_string(),
@@ -50,7 +57,7 @@ lazy_static! {
                 name: "Cross-Site Scripting (XSS)".to_string(),
                 pattern: Regex::new(
                     r#"(?i)(innerHTML|outerHTML|document\.write|eval)\s*=.*\+|dangerouslySetInnerHTML"#
-                ).expect("XSS regex should compile"),
+                ).unwrap_or_else(|e| panic!("XSS regex should compile: {e}")),
                 severity: Severity::Error,
                 cve_references: vec!["CWE-79".to_string()],
                 description: "Potential XSS vulnerability. Unescaped user input in HTML context can allow attackers to inject malicious scripts.".to_string(),
@@ -63,7 +70,7 @@ lazy_static! {
             "weak_crypto_md5".to_string(),
             VulnerabilityPattern {
                 name: "Weak Cryptography (MD5)".to_string(),
-                pattern: Regex::new(r#"(?i)(md5|MD5|Md5)\s*\(|crypto::md5|hashlib\.md5"#).expect("MD5 regex should compile"),
+                pattern: Regex::new(r#"(?i)(md5|MD5|Md5)\s*\(|crypto::md5|hashlib\.md5"#).unwrap_or_else(|e| panic!("MD5 regex should compile: {e}")),
                 severity: Severity::Warning,
                 cve_references: vec!["CWE-327".to_string()],
                 description: "MD5 is cryptographically broken and should not be used for security purposes.".to_string(),
@@ -76,7 +83,7 @@ lazy_static! {
             "weak_crypto_sha1".to_string(),
             VulnerabilityPattern {
                 name: "Weak Cryptography (SHA1)".to_string(),
-                pattern: Regex::new(r#"(?i)(sha1|SHA1|Sha1)\s*\(|crypto::sha1|hashlib\.sha1"#).expect("SHA1 regex should compile"),
+                pattern: Regex::new(r#"(?i)(sha1|SHA1|Sha1)\s*\(|crypto::sha1|hashlib\.sha1"#).unwrap_or_else(|e| panic!("SHA1 regex should compile: {e}")),
                 severity: Severity::Warning,
                 cve_references: vec!["CWE-327".to_string()],
                 description: "SHA1 is deprecated and vulnerable to collision attacks.".to_string(),
@@ -91,7 +98,7 @@ lazy_static! {
                 name: "Hardcoded Secret".to_string(),
                 pattern: Regex::new(
                     r#"(?i)(password|secret|api_key|apikey|private_key|token)\s*=\s*["'][^"']{8,}["']"#
-                ).expect("Hardcoded secret regex should compile"),
+                ).unwrap_or_else(|e| panic!("Hardcoded secret regex should compile: {e}")),
                 severity: Severity::Error,
                 cve_references: vec!["CWE-798".to_string()],
                 description: "Hardcoded credentials or secrets detected in source code.".to_string(),
@@ -106,7 +113,7 @@ lazy_static! {
                 name: "Insecure Deserialization".to_string(),
                 pattern: Regex::new(
                     r#"(?i)(pickle\.loads|yaml\.load\(|unserialize|ObjectInputStream)"#
-                ).expect("Insecure deserialization regex should compile"),
+                ).unwrap_or_else(|e| panic!("Insecure deserialization regex should compile: {e}")),
                 severity: Severity::Error,
                 cve_references: vec!["CWE-502".to_string()],
                 description: "Insecure deserialization can lead to remote code execution.".to_string(),
@@ -121,7 +128,7 @@ lazy_static! {
                 name: "Command Injection".to_string(),
                 pattern: Regex::new(
                     r#"(?i)(os\.system|subprocess\.call|exec|shell_exec|system)\s*\([^)]*\+|`.*\$"#
-                ).expect("Command injection regex should compile"),
+                ).unwrap_or_else(|e| panic!("Command injection regex should compile: {e}")),
                 severity: Severity::Error,
                 cve_references: vec!["CWE-78".to_string()],
                 description: "Potential command injection. User input in shell commands can allow arbitrary command execution.".to_string(),
@@ -136,7 +143,7 @@ lazy_static! {
                 name: "Path Traversal".to_string(),
                 pattern: Regex::new(
                     r#"(?i)(open|readFile|read_file|fopen)\s*\([^)]*\+|path.*=.*['"/].*\+|join.*\.\."#
-                ).expect("Path traversal regex should compile"),
+                ).unwrap_or_else(|e| panic!("Path traversal regex should compile: {e}")),
                 severity: Severity::Warning,
                 cve_references: vec!["CWE-22".to_string()],
                 description: "Potential path traversal vulnerability. User-controlled file paths may access unauthorized files.".to_string(),
@@ -151,7 +158,7 @@ lazy_static! {
                 name: "Server-Side Request Forgery (SSRF)".to_string(),
                 pattern: Regex::new(
                     r#"(?i)(requests\.get|urllib\.request|fetch|http\.get)\s*\([^)]*\+"#
-                ).expect("SSRF regex should compile"),
+                ).unwrap_or_else(|e| panic!("SSRF regex should compile: {e}")),
                 severity: Severity::Warning,
                 cve_references: vec!["CWE-918".to_string()],
                 description: "Potential SSRF vulnerability. User-controlled URLs in HTTP requests may access internal resources.".to_string(),
@@ -359,13 +366,25 @@ impl Default for SecurityAgent {
 }
 
 /// Checks if a file should be scanned for security issues.
-fn is_code_file(path: &PathBuf) -> bool {
+fn is_code_file(path: &Path) -> bool {
     if let Some(ext) = path.extension() {
         let ext_str = ext.to_string_lossy().to_lowercase();
         matches!(
             ext_str.as_str(),
-            "rs" | "py" | "js" | "ts" | "jsx" | "tsx" | "java" | "go" | "php" | "rb" | "c"
-                | "cpp" | "cs" | "swift" | "kt"
+            "rs" | "py"
+                | "js"
+                | "ts"
+                | "jsx"
+                | "tsx"
+                | "java"
+                | "go"
+                | "php"
+                | "rb"
+                | "c"
+                | "cpp"
+                | "cs"
+                | "swift"
+                | "kt"
         )
     } else {
         false
@@ -442,9 +461,11 @@ def get_user(username):
         let findings = agent.scan_file_content(code, &path);
 
         assert!(!findings.is_empty());
-        assert!(findings.iter().any(|f| f
-            .category
-            .contains("SQL Injection")));
+        assert!(
+            findings
+                .iter()
+                .any(|f| f.category.contains("SQL Injection"))
+        );
         assert!(findings.iter().any(|f| f.severity == Severity::Error));
     }
 
@@ -461,9 +482,11 @@ function display(userInput) {
         let findings = agent.scan_file_content(code, &path);
 
         assert!(!findings.is_empty());
-        assert!(findings
-            .iter()
-            .any(|f| f.category.contains("Cross-Site Scripting")));
+        assert!(
+            findings
+                .iter()
+                .any(|f| f.category.contains("Cross-Site Scripting"))
+        );
     }
 
     #[test]
@@ -497,9 +520,11 @@ password = "MyTestP@ssw0rd123"
         let findings = agent.scan_file_content(code, &path);
 
         assert!(!findings.is_empty());
-        assert!(findings
-            .iter()
-            .any(|f| f.category.contains("Hardcoded Secret")));
+        assert!(
+            findings
+                .iter()
+                .any(|f| f.category.contains("Hardcoded Secret"))
+        );
     }
 
     #[test]
@@ -515,9 +540,11 @@ def run_command(user_input):
         let findings = agent.scan_file_content(code, &path);
 
         assert!(!findings.is_empty());
-        assert!(findings
-            .iter()
-            .any(|f| f.category.contains("Command Injection")));
+        assert!(
+            findings
+                .iter()
+                .any(|f| f.category.contains("Command Injection"))
+        );
     }
 
     #[test]
@@ -533,9 +560,11 @@ def read_user_file(filename):
         let findings = agent.scan_file_content(code, &path);
 
         // Path traversal detection
-        assert!(findings
-            .iter()
-            .any(|f| f.category.contains("Path Traversal") || f.message.contains("path")));
+        assert!(
+            findings
+                .iter()
+                .any(|f| f.category.contains("Path Traversal") || f.message.contains("path"))
+        );
     }
 
     #[test]
@@ -568,9 +597,11 @@ def load_data(data):
         let findings = agent.scan_file_content(code, &path);
 
         assert!(!findings.is_empty());
-        assert!(findings
-            .iter()
-            .any(|f| f.category.contains("Deserialization")));
+        assert!(
+            findings
+                .iter()
+                .any(|f| f.category.contains("Deserialization"))
+        );
     }
 
     #[test]
@@ -610,9 +641,11 @@ query = "SELECT * FROM users WHERE id = " + user_id
         let findings = agent.scan_file_content(code, &path);
 
         assert!(!findings.is_empty());
-        assert!(findings
-            .iter()
-            .any(|f| f.message.contains("CWE") || f.message.contains("Reference:")));
+        assert!(
+            findings
+                .iter()
+                .any(|f| f.message.contains("CWE") || f.message.contains("Reference:"))
+        );
     }
 
     #[test]
@@ -626,8 +659,10 @@ password_hash = hashlib.md5(password.encode())
         let findings = agent.scan_file_content(code, &path);
 
         assert!(!findings.is_empty());
-        assert!(findings
-            .iter()
-            .any(|f| f.message.contains("Remediation:") || f.message.contains("Use")));
+        assert!(
+            findings
+                .iter()
+                .any(|f| f.message.contains("Remediation:") || f.message.contains("Use"))
+        );
     }
 }

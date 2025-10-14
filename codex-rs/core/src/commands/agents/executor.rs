@@ -1,9 +1,14 @@
 //! Agent command executor for routing commands to AI agents.
 
-use crate::agents::{Agent, AgentResult, AgentRouter, AgentToolkit, GitContext};
+use crate::agents::Agent;
+use crate::agents::AgentResult;
+use crate::agents::AgentRouter;
+use crate::agents::AgentToolkit;
+use crate::agents::GitContext;
 use crate::commands::invocation::CommandInvocation;
 use crate::commands::parser::CommandMetadata;
-use anyhow::{Context, Result};
+use anyhow::Context;
+use anyhow::Result;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -103,7 +108,7 @@ impl AgentCommandExecutor {
                 .await
                 .with_context(|| {
                     if let Some(agent_id) = &metadata.agent_id {
-                        format!("Agent '{}' not found or not available", agent_id)
+                        format!("Agent '{agent_id}' not found or not available")
                     } else {
                         "No suitable agent found for command".to_string()
                     }
@@ -122,9 +127,13 @@ impl AgentCommandExecutor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::agents::{ActivationScore, AgentId, TaskContext};
+    use crate::agents::ActivationScore;
+    use crate::agents::AgentId;
+    use crate::agents::TaskContext;
     use crate::commands::invocation::InvocationParser;
-    use crate::commands::parser::{ArgDefinition, ArgType, CommandPermissions};
+    use crate::commands::parser::ArgDefinition;
+    use crate::commands::parser::ArgType;
+    use crate::commands::parser::CommandPermissions;
     use async_trait::async_trait;
     use std::path::PathBuf;
 

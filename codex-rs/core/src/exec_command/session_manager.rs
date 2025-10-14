@@ -385,8 +385,11 @@ PY"#
         {
             Ok(v) => v,
             Err(e) => {
-                // PTY may be restricted in some sandboxes; skip in that case.
-                if e.contains("openpty") || e.contains("Operation not permitted") {
+                // PTY may be restricted in some sandboxes or minimal environments; skip in that case.
+                if e.contains("openpty")
+                    || e.contains("Operation not permitted")
+                    || e.contains("No such file or directory")
+                {
                     eprintln!("skipping test due to restricted PTY: {e}");
                     return;
                 }

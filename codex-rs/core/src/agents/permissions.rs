@@ -82,21 +82,24 @@ impl AgentPermissions {
                 if suffix.starts_with("/*") {
                     // Pattern like "**/*.rs"
                     if let Some(extension) = suffix.strip_prefix("/*.") {
-                        return path_str.ends_with(&format!(".{}", extension));
+                        return path_str.ends_with(&format!(".{extension}"));
                     }
                 } else if suffix.starts_with('/') {
                     // Pattern like "**/secrets/**" or "**/secrets/"
                     let dir_pattern = suffix.trim_start_matches('/').trim_end_matches("/**");
-                    return path_str.contains(&format!("/{}/", dir_pattern))
-                        || path_str.contains(&format!("\\{}\\", dir_pattern))
-                        || path_str.contains(&format!("/{}", dir_pattern))
-                        || path_str.contains(&format!("\\{}", dir_pattern));
+                    return path_str.contains(&format!("/{dir_pattern}/"))
+                        || path_str.contains(&format!("\\{dir_pattern}\\"))
+                        || path_str.contains(&format!("/{dir_pattern}"))
+                        || path_str.contains(&format!("\\{dir_pattern}"));
                 }
             }
         } else if pattern.starts_with("*.") {
             // Simple extension pattern like "*.rs"
-            let extension = pattern.strip_prefix("*.").unwrap();
-            return path_str.ends_with(&format!(".{}", extension));
+            if let Some(extension) = pattern.strip_prefix("*.") {
+                return path_str.ends_with(&format!(".{extension}"));
+            } else {
+                return false;
+            }
         }
 
         // Default: exact match or contains

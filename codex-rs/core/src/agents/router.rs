@@ -3,7 +3,9 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use super::{Agent, AgentId, TaskContext};
+use super::Agent;
+use super::AgentId;
+use super::TaskContext;
 
 /// Agent router that selects the best agent for a given context.
 pub struct AgentRouter {
@@ -42,10 +44,10 @@ impl AgentRouter {
         scores.sort_by(|(_, a), (_, b)| b.partial_cmp(a).unwrap_or(std::cmp::Ordering::Equal));
 
         // Return top agent if above threshold
-        if let Some((agent, score)) = scores.first() {
-            if *score >= self.activation_threshold {
-                return Some(agent.clone());
-            }
+        if let Some((agent, score)) = scores.first()
+            && *score >= self.activation_threshold
+        {
+            return Some(agent.clone());
         }
 
         None
@@ -106,7 +108,9 @@ pub struct AgentSuggestion {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::agents::{ActivationScore, AgentPermissions, Task};
+    use crate::agents::ActivationScore;
+    use crate::agents::AgentPermissions;
+    use crate::agents::Task;
     use async_trait::async_trait;
 
     struct MockAgent {

@@ -359,6 +359,7 @@ impl Session {
         // - spin up MCP connection manager
         // - perform default shell discovery
         // - load history metadata
+        // - initialize command registry if enabled
         let rollout_fut = RolloutRecorder::new(&config, rollout_params);
 
         let mcp_fut = McpConnectionManager::new(
@@ -369,9 +370,37 @@ impl Session {
         let default_shell_fut = shell::default_user_shell();
         let history_meta_fut = crate::message_history::history_metadata(&config);
 
+        // Initialize command registry if experimental feature is enabled
+        let command_registry_fut = async {
+            if config.experimental_command_system_enabled {
+                // Look for commands in ~/.codex/commands
+                let commands_dir = config.codex_home.join("commands");
+                match crate::commands::CommandRegistry::new(commands_dir).await {
+                    Ok(registry) => Some(std::sync::Arc::new(registry)),
+                    Err(e) => {
+                        warn!("Failed to initialize command registry: {e:#}");
+                        None
+                    }
+                }
+            } else {
+                None
+            }
+        };
+
         // Join all independent futures.
-        let (rollout_recorder, mcp_res, default_shell, (history_log_id, history_entry_count)) =
-            tokio::join!(rollout_fut, mcp_fut, default_shell_fut, history_meta_fut);
+        let (
+            rollout_recorder,
+            mcp_res,
+            default_shell,
+            (history_log_id, history_entry_count),
+            command_registry,
+        ) = tokio::join!(
+            rollout_fut,
+            mcp_fut,
+            default_shell_fut,
+            history_meta_fut,
+            command_registry_fut
+        );
 
         let rollout_recorder = rollout_recorder.map_err(|e| {
             error!("failed to initialize rollout recorder: {e:#}");
@@ -461,6 +490,21 @@ impl Session {
             is_review_mode: false,
             final_output_json_schema: None,
         };
+
+        // Initialize command watcher if registry exists
+        let command_watcher = if let Some(ref registry) = command_registry {
+            let commands_dir = config.codex_home.join("commands");
+            match crate::commands::watcher::CommandWatcher::new(commands_dir, registry.clone()) {
+                Ok(watcher) => Some(watcher),
+                Err(e) => {
+                    warn!("Failed to initialize command watcher: {e:#}");
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
         let services = SessionServices {
             mcp_connection_manager,
             session_manager: ExecSessionManager::default(),
@@ -474,6 +518,8 @@ impl Session {
                 turn_context.cwd.clone(),
                 config.codex_linux_sandbox_exe.clone(),
             )),
+            command_registry,
+            command_watcher,
         };
 
         let sess = Arc::new(Session {
@@ -1121,6 +1167,90 @@ impl Drop for Session {
     }
 }
 
+/// Extract current files from session state for command context.
+///
+/// Currently returns an empty vector as Codex core doesn't track "open files" -
+/// this is TUI-specific and will be enhanced in future sprints.
+///
+/// Future enhancements may include:
+/// - Extracting from editor state in TUI mode
+/// - Passing via CLI args in exec mode
+/// - MCP context integration
+/// - Workspace-aware file tracking
+async fn extract_current_files(_sess: &Session, _config: &Config) -> Vec<PathBuf> {
+    // Placeholder: Return empty vector for now
+    // Will be enhanced in future sprints when TUI integration is added
+    vec![]
+}
+
+/// Extract conversation context from session state for command context.
+///
+/// Currently returns None as conversation history extraction needs additional work
+/// to properly format and summarize messages for command templates.
+///
+/// Future enhancements will include:
+/// - Extracting last N messages from conversation history
+/// - Filtering by role (user/assistant)
+/// - Truncating long messages
+/// - Adding timestamps
+/// - Including conversation ID for context continuity
+///
+/// # Arguments
+///
+/// * `sess` - The session containing conversation history
+/// * `max_messages` - Maximum number of recent messages to extract (default: 5)
+async fn extract_conversation_context(
+    _sess: &Session,
+    _max_messages: usize,
+) -> Option<crate::commands::ConversationContext> {
+    // Placeholder: Return None for now
+    // Will be enhanced in future sprints when conversation history integration is added
+    //
+    // Future implementation will:
+    // 1. Access sess.state.lock().await.history
+    // 2. Extract last N ResponseItems
+    // 3. Convert to MessageSummary format
+    // 4. Return ConversationContext with messages
+    None
+}
+
+/// Collect safe environment variables for command context.
+///
+/// Returns a HashMap of whitelisted environment variables that are safe
+/// to expose to command templates. Only includes variables that exist
+/// and are on the whitelist.
+///
+/// # Security
+///
+/// This function implements a strict whitelist approach to prevent
+/// exposure of sensitive environment variables (tokens, passwords, etc.)
+/// to command templates.
+///
+/// # Whitelisted Variables
+///
+/// - USER: Current user name
+/// - HOME: User's home directory
+/// - SHELL: User's default shell
+/// - LANG: System language/locale
+/// - CODEX_HOME: Codex configuration directory
+/// - CODEX_MODEL: Default Codex model
+fn collect_safe_env_vars() -> std::collections::HashMap<String, String> {
+    use std::collections::HashMap;
+
+    let mut vars = HashMap::new();
+
+    // Whitelist of safe environment variables
+    let safe_vars = ["USER", "HOME", "SHELL", "LANG", "CODEX_HOME", "CODEX_MODEL"];
+
+    for var_name in safe_vars {
+        if let Ok(value) = std::env::var(var_name) {
+            vars.insert(var_name.to_string(), value);
+        }
+    }
+
+    vars
+}
+
 async fn submission_loop(
     sess: Arc<Session>,
     turn_context: TurnContext,
@@ -1243,7 +1373,7 @@ async fn submission_loop(
                 }
             }
             Op::UserTurn {
-                items,
+                mut items,
                 cwd,
                 approval_policy,
                 sandbox_policy,
@@ -1256,6 +1386,61 @@ async fn submission_loop(
                     .client
                     .get_otel_event_manager()
                     .user_prompt(&items);
+
+                // Check for slash commands if command system is enabled
+                if config.experimental_command_system_enabled
+                    && let Some(registry) = &sess.services.command_registry
+                    && let Some(command_text) = crate::commands::detect_slash_command(&items)
+                {
+                    // Extract git diff for command context
+                    let git_diff = match crate::commands::get_git_diff().await {
+                        Ok((true, diff)) if !diff.is_empty() => Some(diff),
+                        _ => None,
+                    };
+
+                    // Extract current files for command context
+                    let current_files = extract_current_files(&sess, &config).await;
+
+                    // Extract conversation context for command context
+                    let conversation_context = extract_conversation_context(&sess, 5).await;
+
+                    // Collect safe environment variables for command context
+                    let env_vars = collect_safe_env_vars();
+
+                    // Execute slash command and replace with expanded prompt
+                    match crate::commands::execute_slash_command(
+                        &command_text,
+                        Arc::clone(registry),
+                        cwd.clone(),
+                        git_diff,
+                        current_files,
+                        conversation_context,
+                        env_vars,
+                    )
+                    .await
+                    {
+                        Ok(expanded_prompt) => {
+                            items = crate::commands::replace_with_expanded_prompt(
+                                items,
+                                expanded_prompt,
+                            );
+                        }
+                        Err(e) => {
+                            // Send error event and return
+                            let error_msg = format!("Slash command error: {e:#}");
+                            error!("{error_msg}");
+                            let _ = sess
+                                .tx_event
+                                .send(Event {
+                                    id: sub.id.clone(),
+                                    msg: EventMsg::Error(ErrorEvent { message: error_msg }),
+                                })
+                                .await;
+                            return;
+                        }
+                    }
+                }
+
                 // attempt to inject input into current task
                 if let Err(items) = sess.inject_input(items).await {
                     // Derive a fresh TurnContext for this turn using the provided overrides.
@@ -2773,6 +2958,8 @@ mod tests {
                 turn_context.cwd.clone(),
                 None,
             )),
+            command_registry: None,
+            command_watcher: None,
         };
         let session = Session {
             conversation_id,
@@ -2846,6 +3033,8 @@ mod tests {
                 config.cwd.clone(),
                 None,
             )),
+            command_registry: None,
+            command_watcher: None,
         };
         let session = Arc::new(Session {
             conversation_id,

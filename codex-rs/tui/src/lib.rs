@@ -40,6 +40,7 @@ mod citation_regex;
 mod cli;
 mod clipboard_paste;
 mod color;
+mod command_palette;
 pub mod custom_terminal;
 mod diff_render;
 mod exec_cell;

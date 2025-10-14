@@ -1,0 +1,12 @@
+{
+	// Example VS Code tasks configuration
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Run SuperClaude Orchestrator",
+			"type": "shell",
+			"command": "python superclaude_orchestrator.py --config formfluent-config.json",
+			"group": "build"
+		}
+	]
+}
