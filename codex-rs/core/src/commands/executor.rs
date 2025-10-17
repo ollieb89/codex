@@ -333,11 +333,11 @@ impl ExecutionContext {
 mod tests {
     use super::*;
     use crate::commands::invocation::InvocationParser;
-    use crate::commands::parser::ArgDefinition;
-    use crate::commands::parser::ArgType;
-    use crate::commands::parser::CommandMetadata;
-    use crate::commands::parser::CommandPermissions;
-    use crate::commands::user::loader::UserCommand;
+    
+    
+    
+    
+    
     use std::path::PathBuf;
     use tempfile::TempDir;
 
@@ -464,7 +464,7 @@ Hello {{args.name}}! Welcome to the workspace at {{workspace_root}}.
         use crate::agents::Task;
         use crate::agents::TaskContext;
         use async_trait::async_trait;
-        use std::any::Any;
+        
 
         // Create mock agent
         struct MockAgent {

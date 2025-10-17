@@ -5,11 +5,13 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::commands::builtin::{ExplainCommand, ReviewCommand, TestCommand};
+    use crate::commands::builtin::ExplainCommand;
+    use crate::commands::builtin::ReviewCommand;
+    use crate::commands::builtin::TestCommand;
     use crate::commands::executor::ExecutionContext;
-    use crate::commands::integration::{
-        detect_slash_command, execute_slash_command, replace_with_expanded_prompt,
-    };
+    use crate::commands::integration::detect_slash_command;
+    use crate::commands::integration::execute_slash_command;
+    use crate::commands::integration::replace_with_expanded_prompt;
     use crate::commands::registry::CommandRegistry;
     use crate::protocol::InputItem;
     use std::collections::HashMap;
@@ -331,7 +333,7 @@ Hello, {{person}}! Welcome to Codex.
         assert_eq!(command_text.unwrap(), "/explain screenshot.png");
 
         let expanded = "Explain this image...".to_string();
-        let result = replace_with_expanded_prompt(items.clone(), expanded.clone());
+        let result = replace_with_expanded_prompt(items.clone(), expanded);
 
         // Should preserve images
         assert_eq!(result.len(), 3);
@@ -406,7 +408,7 @@ Hello, {{person}}! Welcome to Codex.
 
         // Extract actual git diff
         let git_diff = match crate::commands::get_git_diff().await {
-            Ok((true, diff)) if !diff.is_empty() => Some(diff.clone()),
+            Ok((true, diff)) if !diff.is_empty() => Some(diff),
             _ => None,
         };
 
@@ -532,7 +534,8 @@ Hello, {{person}}! Welcome to Codex.
 
     #[tokio::test]
     async fn test_execution_context_with_conversation_context() {
-        use crate::commands::{ConversationContext, MessageSummary};
+        use crate::commands::ConversationContext;
+        use crate::commands::MessageSummary;
 
         let workspace = PathBuf::from("/home/user/project");
 
@@ -575,7 +578,8 @@ Hello, {{person}}! Welcome to Codex.
 
     #[tokio::test]
     async fn test_execution_context_full_context() {
-        use crate::commands::{ConversationContext, MessageSummary};
+        use crate::commands::ConversationContext;
+        use crate::commands::MessageSummary;
 
         let workspace = PathBuf::from("/home/user/project");
 
@@ -601,7 +605,8 @@ Hello, {{person}}! Welcome to Codex.
 
     #[tokio::test]
     async fn test_e2e_slash_command_with_conversation_context() {
-        use crate::commands::{ConversationContext, MessageSummary};
+        use crate::commands::ConversationContext;
+        use crate::commands::MessageSummary;
 
         let registry = create_test_registry().await;
         let workspace = PathBuf::from("/tmp/test_workspace");
@@ -690,7 +695,8 @@ Hello, {{person}}! Welcome to Codex.
 
     #[tokio::test]
     async fn test_execution_context_full_with_env_vars() {
-        use crate::commands::{ConversationContext, MessageSummary};
+        use crate::commands::ConversationContext;
+        use crate::commands::MessageSummary;
 
         let workspace = PathBuf::from("/home/user/project");
 
@@ -749,7 +755,8 @@ Hello, {{person}}! Welcome to Codex.
     async fn test_watcher_file_creation_triggers_reload() {
         use std::fs;
         use tempfile::TempDir;
-        use tokio::time::{Duration, sleep};
+        use tokio::time::Duration;
+        use tokio::time::sleep;
 
         let temp_dir = TempDir::new().unwrap();
         let commands_dir = temp_dir.path().to_path_buf();
@@ -789,7 +796,8 @@ New command template"#;
     async fn test_watcher_file_modification_triggers_reload() {
         use std::fs;
         use tempfile::TempDir;
-        use tokio::time::{Duration, sleep};
+        use tokio::time::Duration;
+        use tokio::time::sleep;
 
         let temp_dir = TempDir::new().unwrap();
         let commands_dir = temp_dir.path().to_path_buf();
@@ -841,7 +849,8 @@ Modified template"#;
     async fn test_watcher_file_deletion_triggers_reload() {
         use std::fs;
         use tempfile::TempDir;
-        use tokio::time::{Duration, sleep};
+        use tokio::time::Duration;
+        use tokio::time::sleep;
 
         let temp_dir = TempDir::new().unwrap();
         let commands_dir = temp_dir.path().to_path_buf();
@@ -885,7 +894,8 @@ Delete template"#;
     async fn test_watcher_debouncing_multiple_rapid_changes() {
         use std::fs;
         use tempfile::TempDir;
-        use tokio::time::{Duration, sleep};
+        use tokio::time::Duration;
+        use tokio::time::sleep;
 
         let temp_dir = TempDir::new().unwrap();
         let commands_dir = temp_dir.path().to_path_buf();
@@ -928,7 +938,8 @@ Template {}"#,
     async fn test_watcher_ignores_non_md_files() {
         use std::fs;
         use tempfile::TempDir;
-        use tokio::time::{Duration, sleep};
+        use tokio::time::Duration;
+        use tokio::time::sleep;
 
         let temp_dir = TempDir::new().unwrap();
         let commands_dir = temp_dir.path().to_path_buf();
